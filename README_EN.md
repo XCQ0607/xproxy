@@ -28,67 +28,73 @@ A lightweight proxy server implemented in Node.js, supporting both HTTP and SOCK
 | `AUTH` | Enable Authentication (`true`/`false`) | `true` |
 | `ARGO_PAT` / `ARGO_AUTH` | Cloudflare Tunnel Token (Starts tunnel if set) | - |
 
-## Getting Started
+## Protocols
 
-### Method 1: Using Docker (Recommended)
+This project supports three connection modes:
 
-Use our pre-built image from GHCR: `ghcr.io/xcq0607/xproxy:latest`
+1.  **HTTP Proxy (TCP)**: Port `3000`. Standard HTTP Proxy.
+2.  **SOCKS5 Proxy (TCP)**: Port `3001`. Standard SOCKS5 Proxy.
+3.  **SOCKS5 Proxy (WebSocket)**: Port `3000` (Path `/`). For Cloudflare Tunnel/CDN.
 
-**Run Command:**
+## Cloudflare Tunnel Configuration (Web UI)
 
-```bash
-docker run -d \
-  --name xproxy \
-  -p 3000:3000 \
-  -p 3001:3001 \
-  -e USER=myusername \
-  -e PASSWORD=mypassword \
-  ghcr.io/xcq0607/xproxy:latest
-```
+If you are using Cloudflare Tunnel, you only need one rule to support both HTTP and SOCKS5(WS):
 
-After running:
-- HTTP Proxy: `http://myusername:mypassword@<IP>:3000`
-- SOCKS5 Proxy: `socks5://myusername:mypassword@<IP>:3001`
+1.  Go to **Zero Trust Dashboard** -> **Tunnels** -> **Public Hostname**.
+2.  **Add a public hostname**:
+    -   **Subdomain**: e.g., `proxy` (Resulting in `proxy.example.com`)
+    -   **Service**: `HTTP`
+    -   **URL**: `localhost:3000`
+3.  **Save**.
 
-### Method 2: Using Node.js
+*Note: Even though SOCKS5 TCP is on 3001, we recommend using the WebSocket mode on port 3000 for Cloudflare usage. This avoids needing `cloudflared` on the client side.*
 
-To run from source:
+## Client Connection Guide
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/xproxy
-    cd xproxy
-    ```
+### 1. Direct IP Mode (Public IP)
 
-2.  **Install Dependencies**
-    ```bash
-    npm install
-    ```
+For VPS or dedicated servers.
 
-3.  **Run**
-    ```bash
-    # Start with default settings
-    npm start
+-   **HTTP**: `IP:3000` (User/Pass)
+-   **SOCKS5**: `IP:3001` (User/Pass)
 
-    # Start with custom settings (Linux/Mac)
-    USER=myuser PASSWORD=mypass HTTP_PORT=8080 npm start
-    
-    # Start with custom settings (Windows PowerShell)
-    $env:USER="myuser"; $env:PASSWORD="mypass"; npm start
-    ```
+### 2. Cloudflare Tunnel Mode (Domain Name)
 
-## Verification
+For home servers or NAT environments using Cloudflare Tunnel.
+Assuming domain `proxy.example.com` on port `80` (HTTP) or `443` (HTTPS).
 
-Test with `curl`:
+#### **Connect via HTTP Proxy**
+-   **Tools**: Browser, Curl, etc.
+-   **Address**: `proxy.example.com`
+-   **Port**: `80` (or `443`)
+-   **Auth**: `admin:12345678`
 
-**Test HTTP Proxy:**
-```bash
-curl -x http://admin:12345678@localhost:3000 http://example.com
-```
+#### **Connect via SOCKS5 Proxy (V2RayN / Clash)**
+Uses WebSocket tunneling. No client-side `cloudflared` needed.
 
-**Test SOCKS5 Proxy:**
-```bash
-curl -x socks5h://admin:12345678@localhost:3001 http://example.com
+**V2RayN Example**:
+1.  Add **Socks** Server.
+2.  **Address**: `proxy.example.com`
+3.  **Port**: `80` (Use 443 if TLS enabled)
+4.  **User**: `admin`
+5.  **Password**: `12345678`
+6.  **Transport**: Select **`ws`**
+7.  **Path**: `/`
+8.  (Optional) TLS: Enable if using HTTPS.
+
+**Clash Example**:
+```yaml
+proxies:
+  - name: "Socks5-WS"
+    type: socks5
+    server: proxy.example.com
+    port: 80
+    username: admin
+    password: "12345678"
+    tls: false # set true for https
+    network: ws
+    ws-opts:
+      path: "/"
 ```
 
 ## License

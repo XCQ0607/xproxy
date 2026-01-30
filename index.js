@@ -3,6 +3,7 @@ const http = require('http');
 const net = require('net');
 const url = require('url');
 const dns = require('dns');
+const WebSocket = require('ws');
 
 // Set default DNS to Cloudflare and Google
 try {
@@ -20,7 +21,7 @@ const AUTH = process.env.AUTH !== 'false'; // Default to true
 
 const HTTP_AUTH_HEADER = 'Basic ' + Buffer.from(`${USER}:${PASSWORD}`).toString('base64');
 
-// --- HTTP Proxy ---
+// --- HTTP Proxy & WebSocket Server ---
 
 const requestHandler = (req, res) => {
     // Proxy Authentication
@@ -52,14 +53,26 @@ const requestHandler = (req, res) => {
 
     proxyReq.on('error', (err) => {
         console.error('HTTP Proxy Request Error:', err.message);
-        res.writeHead(500);
-        res.end('Proxy Error');
+        if (!res.headersSent) {
+            res.writeHead(500);
+            res.end('Proxy Error');
+        }
     });
 
     req.pipe(proxyReq, { end: true });
 };
 
 const httpServer = http.createServer(requestHandler);
+const wss = new WebSocket.Server({ server: httpServer });
+
+wss.on('connection', (ws) => {
+    console.log('WebSocket SOCKS5 connection via WS');
+    const duplex = WebSocket.createWebSocketStream(ws);
+
+    // Directly pipe the WebSocket stream to our SOCKS5 handler logic
+    handleSocksRequestViaStream(duplex);
+});
+
 
 httpServer.on('connect', (req, clientSocket, head) => {
     // Proxy Authentication for tunnels
@@ -96,14 +109,20 @@ httpServer.on('connect', (req, clientSocket, head) => {
 
 httpServer.listen(HTTP_PORT, () => {
     console.log(`HTTP Proxy listening on port ${HTTP_PORT}`);
+    console.log(`WebSocket SOCKS5 enabled on port ${HTTP_PORT} (Use path: /)`);
 });
 
-// --- SOCKS5 Proxy ---
+// --- SOCKS5 Proxy (Legacy TCP) ---
 
 const socks5Server = net.createServer((socket) => {
+    handleSocksRequestViaStream(socket);
+});
+
+// Reusable SOCKS5 Handshake Logic for both TCP and WS
+function handleSocksRequestViaStream(socket) {
     socket.once('data', (data) => {
         // SOCKS5 Version Identifier/Method Selection
-        if (data[0] !== 0x05) {
+        if (!data || data[0] !== 0x05) {
             socket.end();
             return;
         }
@@ -112,11 +131,11 @@ const socks5Server = net.createServer((socket) => {
         const methods = data.slice(2, 2 + nMethods);
 
         if (AUTH) {
-            // Provide 0x02 (Username/Password Auth) if supported, else 0xFF (No Acceptable Methods)
+            // Provide 0x02 (Username/Password Auth) if supported, else 0xFF
             if (methods.includes(0x02)) {
                 socket.write(Buffer.from([0x05, 0x02]));
                 socket.once('data', (authData) => {
-                    if (authData[0] !== 0x01) { // Auth version must be 1
+                    if (!authData || authData[0] !== 0x01) { // Auth version must be 1
                         socket.end();
                         return;
                     }
@@ -128,7 +147,7 @@ const socks5Server = net.createServer((socket) => {
 
                     if (uname === USER && passwd === PASSWORD) {
                         socket.write(Buffer.from([0x01, 0x00])); // Success
-                        handleSocksRequest(socket);
+                        handleSocksRequestCmd(socket);
                     } else {
                         socket.write(Buffer.from([0x01, 0x01])); // Failure
                         socket.end();
@@ -141,15 +160,15 @@ const socks5Server = net.createServer((socket) => {
         } else {
             // NO AUTHENTICATION REQUIRED
             socket.write(Buffer.from([0x05, 0x00]));
-            handleSocksRequest(socket);
+            handleSocksRequestCmd(socket);
         }
     });
-});
+}
 
-function handleSocksRequest(socket) {
+function handleSocksRequestCmd(socket) {
     socket.once('data', (data) => {
         // Version 5, CMD 1 (CONNECT), RSV 0
-        if (data[0] !== 0x05 || data[1] !== 0x01 || data[2] !== 0x00) {
+        if (!data || data[0] !== 0x05 || data[1] !== 0x01 || data[2] !== 0x00) {
             // We only support CONNECT
             socket.end();
             return;
