@@ -264,9 +264,11 @@ function downloadAndStartCloudflared() {
         }
     } else if (platform === 'darwin') {
         if (arch === 'x64') {
-            url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64';
+            url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz';
+            filename = 'cloudflared-darwin-amd64.tgz';
         } else if (arch === 'arm64') {
-            url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64';
+            url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz';
+            filename = 'cloudflared-darwin-arm64.tgz';
         }
     } else if (platform === 'win32') {
         url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe';
@@ -294,27 +296,68 @@ function downloadAndStartCloudflared() {
     }
 
     console.log(`Downloading cloudflared from ${url}...`);
-    const file = fs.createWriteStream(filePath);
-
-    https.get(url, (response) => {
-        if (response.statusCode !== 200) {
-            console.error(`Failed to download cloudflared. Status Code: ${response.statusCode}`);
+    downloadFile(url, filePath, (err) => {
+        if (err) {
+            console.error('Error downloading cloudflared:', err.message);
+            fs.unlink(filePath, () => { });
             return;
         }
-        response.pipe(file);
-        file.on('finish', () => {
-            file.close(() => {
-                console.log('Download completed.');
-                if (platform !== 'win32') {
-                    fs.chmodSync(filePath, '755');
-                }
-                runCloudflared(filePath);
-            });
-        });
-    }).on('error', (err) => {
-        fs.unlink(filePath, () => { });
-        console.error('Error downloading cloudflared:', err.message);
+        console.log('Download completed.');
+        if (filename.endsWith('.tgz')) {
+            console.log('Extracting tgz archive...');
+            const tar = require('child_process').spawnSync('tar', ['-xzf', filePath, '-C', path.dirname(filePath)]);
+            if (tar.error) {
+                console.error('Failed to extract cloudflared:', tar.error);
+                return;
+            }
+            // Assume the extracted binary is named 'cloudflared' inside the tar? 
+            // Actually, Cloudflared tarballs usually contain the binary named 'cloudflared'.
+            // We need to find it and ensure it's executable.
+            // But for simplicity, we assume generic 'cloudflared' binary is present after extraction if we need to run it.
+            // macOS tar extraction might create 'cloudflared' binary in same dir.
+            // We update filePath to point to the binary.
+            // However, our runCloudflared uses 'binPath'.
+            // Let's assume standard behavior: binary is named 'cloudflared' (no ext)
+            runCloudflared(path.join(path.dirname(filePath), 'cloudflared'));
+            return;
+        }
+
+        if (platform !== 'win32') {
+            fs.chmodSync(filePath, '755');
+        }
+        runCloudflared(filePath);
     });
+
+    function downloadFile(url, dest, cb) {
+        const file = fs.createWriteStream(dest);
+
+        function makeRequest(currentUrl) {
+            https.get(currentUrl, (response) => {
+                // Handle Redirects
+                if (response.statusCode === 301 || response.statusCode === 302) {
+                    if (response.headers.location) {
+                        console.log(`Following redirect to: ${response.headers.location}`);
+                        makeRequest(response.headers.location);
+                        return;
+                    }
+                }
+
+                if (response.statusCode !== 200) {
+                    cb(new Error(`Failed to download. Status Code: ${response.statusCode}`));
+                    return;
+                }
+
+                response.pipe(file);
+                file.on('finish', () => {
+                    file.close(() => cb(null));
+                });
+            }).on('error', (err) => {
+                cb(err);
+            });
+        }
+
+        makeRequest(url);
+    }
 
     function runCloudflared(binPath) {
         console.log('Starting Cloudflared Tunnel...');
