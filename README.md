@@ -11,7 +11,9 @@
 - **双协议支持**: 
   - HTTP 代理 (默认端口 3000)
   - SOCKS5 代理 (默认端口 3001)
-- **身份验证**: 支持 Basic Auth (HTTP) 和 用户名/密码 (SOCKS5)。
+- **身份验证**: 支持 Basic Auth (HTTP) 和 用户名/密码 (SOCKS5)。可关闭。
+- **内网穿透**: 集成 Cloudflared Tunnel，支持 `ARGO_PAT` 自动启动。
+- **自定义 DNS**: 默认使用 `1.1.1.1` 和 `8.8.8.8` 进行解析，优化海外连接。
 - **配置灵活**: 所有配置均可通过环境变量覆盖。
 - **开箱即用**: 提供 Docker 镜像，一键部署。
 
@@ -23,6 +25,8 @@
 | `SOCKS5_PORT` | SOCKS5 代理监听端口 | `3001` |
 | `USER` | 代理认证用户名 | `admin` |
 | `PASSWORD` | 代理认证密码 | `12345678` |
+| `AUTH` | 是否开启认证 (`true`/`false`) | `true` |
+| `ARGO_PAT` / `ARGO_AUTH` | Cloudflare Tunnel Token (有值则启动 Tunnel) | - |
 
 ## 快速开始
 

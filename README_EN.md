@@ -11,7 +11,9 @@ A lightweight proxy server implemented in Node.js, supporting both HTTP and SOCK
 - **Dual Protocol Support**:
   - HTTP Proxy (Default port 3000)
   - SOCKS5 Proxy (Default port 3001)
-- **Authentication**: Supports Basic Auth (HTTP) and Username/Password Auth (SOCKS5).
+- **Authentication**: Supports Basic Auth (HTTP) and Username/Password Auth (SOCKS5). Toggleable.
+- **Tunneling**: Integrated Cloudflared Tunnel support via `ARGO_PAT`.
+- **Custom DNS**: Defaults to `1.1.1.1` and `8.8.8.8` for better connectivity.
 - **Flexible Configuration**: Fully configurable via environment variables.
 - **Ready to Deploy**: Docker images available.
 
@@ -23,6 +25,8 @@ A lightweight proxy server implemented in Node.js, supporting both HTTP and SOCK
 | `SOCKS5_PORT` | SOCKS5 Proxy listening port | `3001` |
 | `USER` | Authentication Username | `admin` |
 | `PASSWORD` | Authentication Password | `12345678` |
+| `AUTH` | Enable Authentication (`true`/`false`) | `true` |
+| `ARGO_PAT` / `ARGO_AUTH` | Cloudflare Tunnel Token (Starts tunnel if set) | - |
 
 ## Getting Started
 

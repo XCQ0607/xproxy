@@ -1,7 +1,7 @@
 {
     "name": "proxy-server",
-    "version": "1.0.0",
-    "description": "Node.js HTTP and SOCKS5 Proxy Server",
+    "version": "1.1.0",
+    "description": "Node.js HTTP/SOCKS5 Proxy with Auth, Cloudflared Tunnel & Custom DNS",
     "main": "index.js",
     "scripts": {
         "start": "node index.js"
@@ -14,6 +14,7 @@
     "author": "XCQ",
     "license": "ISC",
     "dependencies": {
-        "dotenv": "^16.4.5"
+        "dotenv": "^16.4.5",
+        "node-fetch": "^3.3.2"
     }
 }

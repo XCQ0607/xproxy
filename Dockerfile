@@ -1,5 +1,7 @@
 FROM node:18-alpine
 
+RUN apk add --no-cache libc6-compat gcompat
+
 LABEL org.opencontainers.image.source=https://github.com/XCQ0607/xproxy
 LABEL org.opencontainers.image.description="nodejs xproxy docker image"
 LABEL org.opencontainers.image.licenses=MIT
