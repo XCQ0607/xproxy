@@ -24,29 +24,16 @@ const HTTP_AUTH_HEADER = 'Basic ' + Buffer.from(`${USER}:${PASSWORD}`).toString(
 // --- HTTP Proxy & WebSocket Server ---
 
 const requestHandler = (req, res) => {
-    // 1. Health Check / Direct Access (Prevent Loop)
-    // If usage is direct (e.g. http://localhost:3000/), req.url is just path (e.g. '/')
-    // If usage is proxy (e.g. curl -x ...), req.url is full URL (e.g. http://baidu.com/)
-    if (!req.url.startsWith('http://') && !req.url.startsWith('https://')) {
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('xProxy is running. Please configure your client to use this address as a proxy.');
-        return;
-    }
-
-    console.log(`[HTTP] ${req.method} ${req.url}`);
-
-    // 2. Proxy Authentication
+    // Proxy Authentication
     if (AUTH) {
         const auth = req.headers['proxy-authorization'];
         if (auth !== HTTP_AUTH_HEADER) {
-            console.log('[HTTP] Auth failed');
             res.writeHead(407, { 'Proxy-Authenticate': 'Basic realm="Proxy"' });
             res.end('Proxy Authentication Required');
             return;
         }
     }
 
-    // 3. Forward Request
     const parsedUrl = url.parse(req.url);
     const options = {
         hostname: parsedUrl.hostname,
@@ -56,7 +43,7 @@ const requestHandler = (req, res) => {
         headers: req.headers,
     };
 
-    // Remove Proxy-Authorization header
+    // Remove Proxy-Authorization header to not leak credentials to upstream
     delete options.headers['proxy-authorization'];
 
     const proxyReq = http.request(options, (proxyRes) => {
@@ -65,7 +52,7 @@ const requestHandler = (req, res) => {
     });
 
     proxyReq.on('error', (err) => {
-        console.error('[HTTP] Request Error:', err.message);
+        console.error('HTTP Proxy Request Error:', err.message);
         if (!res.headersSent) {
             res.writeHead(500);
             res.end('Proxy Error');
@@ -76,35 +63,22 @@ const requestHandler = (req, res) => {
 };
 
 const httpServer = http.createServer(requestHandler);
-const wss = new WebSocket.Server({ noServer: true }); // Manual handle
+const wss = new WebSocket.Server({ server: httpServer });
 
 wss.on('connection', (ws) => {
-    console.log('[WS] WebSocket SOCKS5 connection established');
+    console.log('WebSocket SOCKS5 connection via WS');
     const duplex = WebSocket.createWebSocketStream(ws);
+
+    // Directly pipe the WebSocket stream to our SOCKS5 handler logic
     handleSocksRequestViaStream(duplex);
 });
 
-// Handle Upgrade (WS Support)
-httpServer.on('upgrade', (request, socket, head) => {
-    // Note: We can add Auth check here too if needed, but usually 
-    // the initial HTTP Handshake handles auth or the WS tunnel handles it inside SOCKS.
-    // Let's rely on standard SOCKS5 auth inside the tunnel for simplicity and compatibility.
-
-    // Cloudflare/Nginx usually handles the Upgrade header.
-    console.log('[Upgrade] Upgrading to WebSocket...');
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-    });
-});
 
 httpServer.on('connect', (req, clientSocket, head) => {
-    console.log(`[Connect] ${req.url}`);
-
     // Proxy Authentication for tunnels
     if (AUTH) {
         const auth = req.headers['proxy-authorization'];
         if (auth !== HTTP_AUTH_HEADER) {
-            console.log('[Connect] Auth failed');
             clientSocket.write('HTTP/1.1 407 Proxy Authentication Required\r\n' +
                 'Proxy-Authenticate: Basic realm="Proxy"\r\n\r\n');
             clientSocket.end();
@@ -113,12 +87,6 @@ httpServer.on('connect', (req, clientSocket, head) => {
     }
 
     const { port, hostname } = url.parse(`//${req.url}`, false, true);
-
-    if (!hostname || !port) {
-        console.warn('[Connect] Invalid target:', req.url);
-        clientSocket.end();
-        return;
-    }
 
     const serverSocket = net.connect(port || 443, hostname, () => {
         clientSocket.write('HTTP/1.1 200 Connection Established\r\n' +
@@ -129,12 +97,12 @@ httpServer.on('connect', (req, clientSocket, head) => {
     });
 
     serverSocket.on('error', (err) => {
-        console.error('[Connect] Remote Error:', err.message);
+        console.error('HTTP Proxy Connect Error:', err.message);
         clientSocket.end();
     });
 
     clientSocket.on('error', (err) => {
-        console.error('[Connect] Client Socket Error:', err.message);
+        console.error('HTTP Proxy Client Socket Error:', err.message);
         serverSocket.end();
     });
 });
