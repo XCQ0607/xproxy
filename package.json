@@ -1,0 +1,19 @@
+{
+    "name": "proxy-server",
+    "version": "1.0.0",
+    "description": "Node.js HTTP and SOCKS5 Proxy Server",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "keywords": [
+        "proxy",
+        "socks5",
+        "http"
+    ],
+    "author": "XCQ",
+    "license": "ISC",
+    "dependencies": {
+        "dotenv": "^16.4.5"
+    }
+}
